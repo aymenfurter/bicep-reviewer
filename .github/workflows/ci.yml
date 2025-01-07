@@ -1,0 +1,101 @@
+name: Bicep Analyzer CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+  AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+  AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+  AZURE_SEARCH_ENDPOINT: ${{ secrets.AZURE_SEARCH_ENDPOINT }}
+  AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
+  AZURE_SEARCH_INDEX: ${{ secrets.AZURE_SEARCH_INDEX }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Check example.bicep exists
+        run: |
+          if [ ! -f example.bicep ]; then
+            echo "Error: example.bicep file not found in project root"
+            exit 1
+          fi
+
+      - name: Check bicep-best-practices.md exists
+        run: |
+          if [ ! -f bicep-best-practices.md ]; then
+            echo "Error: bicep-best-practices.md file not found in project root"
+            exit 1
+          fi
+
+      - name: Run Bicep Analyzer
+        run: |
+          ./target/release/bicep-analyzer \
+            --bicep-file example.bicep \
+            --best-practices-file bicep-best-practices.md \
+            --minimum-severity 3
+
+      - name: Upload Analysis Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: analysis-results
+          path: |
+            example.bicep
+            bicep-best-practices.md
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      - name: Run rustfmt
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run security audit
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,19 @@
+[package]
+name = "bicep_llm_validator"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+chrono = "0.4"
+clap = { version = "4.4", features = ["derive"] }
+dotenv = "0.15"
+prettytable-rs = "0.10"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+textwrap = "0.16"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"

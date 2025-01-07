@@ -1,0 +1,56 @@
+# Rust build directory
+/target/
+
+# Rust lock file (some prefer to keep this in version control)
+Cargo.lock
+
+# Environment files
+.env
+*.env
+.env.*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Debug files
+**/*.rs.bk
+
+# Log files
+*.log
+
+# Generated documentation
+/doc/
+/docs/
+
+# Test coverage files
+/coverage/
+
+# Binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Backup files
+*~
+*.bak
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux specific
+*~
+.fuse_hidden*
+.directory
+.Trash-*
