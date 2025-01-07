@@ -6,9 +6,9 @@
   </p>
   <p align="center">
     <a href="#-quickstart">Quickstart</a> •
-    <a href="#-features">Features</a> •
+    <a href="#-key-features">Features</a> •
     <a href="#-installation">Installation</a> •
-    <a href="#-usage">Usage</a>
+    <a href="#%EF%B8%8F-usage">Usage</a>
   </p>
   <p align="center">
     <img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge">
@@ -163,15 +163,6 @@ AZURE_SEARCH_ADMIN_KEY="your-search-key"
 AZURE_SEARCH_INDEX="your-index-name"
 ```
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. Here are some areas where you can help:
-
-- Adding new analysis categories
-- Improving best practices detection
-- Enhancing reporting formats
-- Adding support for new Azure resource types
-- Improving documentation and examples
 
 ## 📝 License
 
@@ -181,8 +172,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Azure OpenAI for providing the AI capabilities
 - Azure AI Search for enabling intelligent code example search
-- The Rust community for amazing tools and libraries
-- Contributors to the Azure Bicep project
 
 ---
 
