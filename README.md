@@ -2,7 +2,7 @@
   <h1>🎯 bicep-analyzer</h1>
   
   <p align="center">
-    <strong>Advanced Azure Bicep code analysis powered by AI</strong>
+    <strong>Azure Bicep code analysis powered by AI</strong>
   </p>
   <p align="center">
     <a href="#-quickstart">Quickstart</a> •
