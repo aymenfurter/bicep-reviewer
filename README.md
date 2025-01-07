@@ -19,7 +19,7 @@
 
 ## 🌟 What is bicep-analyzer?
 
-bicep-analyzer is a powerful command-line tool that leverages AI to analyze Azure Bicep Infrastructure as Code files. It provides intelligent insights, best practice recommendations, and security findings to help you write better Bicep code.
+bicep-analyzer is a command-line tool that leverages AI to analyze Azure Bicep Infrastructure as Code files. It provides intelligent insights, best practice recommendations, and security findings to help you write better Bicep code. This codebase demonstrates how to construct intelligent, LLM-derived validations for coding artifacts, directly integrating them into a CI/CD workflow.
 
 - 🤖 **AI-Powered Analysis**: Uses Azure OpenAI to understand and evaluate your code
 - 🎯 **Category-Focused Analysis**: Improves accuracy by having the LLM analyze one aspect at a time:
@@ -30,6 +30,7 @@ bicep-analyzer is a powerful command-line tool that leverages AI to analyze Azur
   - Outputs
   
   This focused approach allows the AI to concentrate deeply on specific aspects rather than trying to analyze everything simultaneously, resulting in more thorough and accurate findings.
+  
 - ⚡ **Intelligent Search**: Utilizes Azure AI Search for finding and learning from relevant code examples (Currently dummy files)
 - 📊 **Severity-Based Findings**: Clear categorization of issues from Critical (5) to Suggestions (1)
 
@@ -88,21 +89,17 @@ Found 8 issues with severity 3 or higher to address.
 +------------+--------------------------------------------------------------+---------------+--------------------------------------------------------------+
 ```
 
+See the following run as a full example: https://github.com/aymenfurter/bicep-reviewer/actions/runs/12654380705/job/35262121604
+
 ## ✨ Key Features
 
 ### 🔍 Smart Analysis
 - **Category-Based Processing**: Analyzes code in focused categories for improved accuracy
 - **Best Practices Validation**: Checks against established Bicep coding standards
-- **Azure Context Awareness**: Understands Azure-specific resources and patterns
-- **Code Example Learning**: Uses real-world examples to improve recommendations
+- **Code Example Learning**: Uses code examples to improve recommendations
 
 ### 📊 Comprehensive Reporting
-- **Severity Levels**: Clear 1-5 rating system:
-  - 5: Critical issues requiring immediate attention
-  - 4: Serious concerns that should be addressed
-  - 3: Important improvements recommended
-  - 2: Minor suggestions for better code
-  - 1: Optional optimizations
+- **Severity Levels**: Clear 1-5 rating system
 - **Detailed Impact Analysis**: Explains the consequences of each finding
 - **Actionable Recommendations**: Clear guidance on how to improve the code
 
@@ -110,7 +107,6 @@ Found 8 issues with severity 3 or higher to address.
 - **Category Selection**: Analyze specific aspects of your code
 - **Severity Thresholds**: Filter findings by minimum severity
 - **Debug Mode**: Detailed insight into the analysis process
-- **Custom Best Practices**: Support for organization-specific standards
 
 ## 📦 Installation
 
@@ -163,10 +159,9 @@ AZURE_SEARCH_ADMIN_KEY="your-search-key"
 AZURE_SEARCH_INDEX="your-index-name"
 ```
 
-
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+The rust code is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 
