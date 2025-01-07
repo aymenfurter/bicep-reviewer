@@ -5,10 +5,10 @@
     <strong>Advanced Azure Bicep code analysis powered by AI</strong>
   </p>
   <p align="center">
-    <a href="#quickstart">Quickstart</a> •
-    <a href="#features">Features</a> •
-    <a href="#installation">Installation</a> •
-    <a href="#usage">Usage</a>
+    <a href="#-quickstart">Quickstart</a> •
+    <a href="#-features">Features</a> •
+    <a href="#-installation">Installation</a> •
+    <a href="#-usage">Usage</a>
   </p>
   <p align="center">
     <img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge">
