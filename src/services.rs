@@ -1,6 +1,7 @@
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+use crate::models::{PullRequestFile, Thread, ThreadComment, ThreadContext};
 
 const DEFAULT_API_VERSION: &str = "2023-03-15-preview";
 const DEFAULT_TEMPERATURE: f32 = 0.3;
