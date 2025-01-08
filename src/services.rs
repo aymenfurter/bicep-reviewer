@@ -180,8 +180,7 @@ fn create_validation_prompt(
 /// Queries Azure Search for relevant examples
 pub async fn query_azure_search(category: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let search_config = get_search_config()?;
-    // TODO: construct search query based on to be validated code using LLM call
-    let url = build_search_url(&search_config, "*");
+    let url = build_search_url(&search_config, category);
     let results = execute_search_request(&url, &search_config.key).await?;
     
     Ok(results.value.into_iter().map(|d| d.content).collect())
