@@ -308,6 +308,110 @@ fn log_response(response: &ChatCompletionResponse) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
+/// Gets modified Bicep files from a pull request
+pub async fn get_modified_bicep_files(
+    org: &str,
+    project: &str,
+    pr_id: i32,
+    pat: &str,
+) -> Result<Vec<PullRequestFile>, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}_apis/git/repositories/{}/pullRequests/{}/changes?api-version=6.0",
+        org, project, pr_id
+    );
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", base64::encode(format!(":{}", pat))))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<serde_json::Value>()
+        .await?;
+
+    let files = response["changes"]
+        .as_array()
+        .ok_or("No changes found")?
+        .iter()
+        .filter(|change| {
+            change["item"]["path"]
+                .as_str()
+                .map(|path| path.ends_with(".bicep"))
+                .unwrap_or(false)
+        })
+        .map(|change| PullRequestFile {
+            path: change["item"]["path"].as_str().unwrap().to_string(),
+            change_type: change["changeType"].as_str().unwrap().to_string(),
+        })
+        .collect();
+
+    Ok(files)
+}
+
+/// Gets file content from a pull request
+pub async fn get_file_content(
+    org: &str,
+    project: &str,
+    pr_id: i32,
+    path: &str,
+    pat: &str,
+) -> Result<String, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}_apis/git/repositories/{}/pullRequests/{}/iterations/1/changes/{}/content?api-version=6.0",
+        org, project, pr_id, path
+    );
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", base64::encode(format!(":{}", pat))))
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+
+    Ok(response)
+}
+
+/// Creates a review comment thread in the pull request
+pub async fn create_review_thread(
+    org: &str,
+    project: &str,
+    pr_id: i32,
+    file_path: &str,
+    comment: &str,
+    pat: &str,
+) -> Result<(), Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}_apis/git/repositories/{}/pullRequests/{}/threads?api-version=6.0",
+        org, project, pr_id
+    );
+
+    let thread = Thread {
+        comments: vec![ThreadComment {
+            content: comment.to_string(),
+            comment_type: 1,
+        }],
+        status: 1,
+        thread_context: ThreadContext {
+            file_path: file_path.to_string(),
+        },
+    };
+
+    client
+        .post(&url)
+        .header("Authorization", format!("Basic {}", base64::encode(format!(":{}", pat))))
+        .json(&thread)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

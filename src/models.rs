@@ -39,6 +39,39 @@ pub struct Args {
     pub minimum_severity: u8,
 }
 
+/// Azure DevOps specific command line arguments
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+pub struct AzureDevOpsArgs {
+    /// Azure DevOps organization URL
+    #[arg(long)]
+    pub organization: String,
+
+    /// Azure DevOps project
+    #[arg(long)]
+    pub project: String,
+
+    /// Pull Request ID
+    #[arg(long)]
+    pub pull_request_id: i32,
+
+    /// Azure DevOps Personal Access Token
+    #[arg(long)]
+    pub pat: String,
+
+    /// Path to markdown file containing best practices
+    #[arg(long)]
+    pub best_practices_file: String,
+
+    /// Enable debug output for LLM requests/responses
+    #[arg(long)]
+    pub debug: bool,
+
+    /// Minimum severity level (1-5) to include in results
+    #[arg(long, default_value_t = DEFAULT_MIN_SEVERITY)]
+    pub minimum_severity: u8,
+}
+
 /// Represents a single validation finding from the code review
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ValidationResult {
@@ -91,4 +124,34 @@ where
         SeverityValue::Number(n) => Ok(n),
         SeverityValue::String(_) => Ok(0),
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullRequestFile {
+    pub path: String,
+    pub change_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FileDiff {
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThreadComment {
+    pub content: String,
+    pub comment_type: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Thread {
+    pub comments: Vec<ThreadComment>,
+    pub status: i32,
+    pub thread_context: ThreadContext,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThreadContext {
+    pub file_path: String,
 }

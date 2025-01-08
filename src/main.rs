@@ -14,6 +14,15 @@ const TABLE_WRAP_WIDTH: usize = 60;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse as Azure DevOps args first
+    if let Ok(args) = AzureDevOpsArgs::try_parse() {
+        if args.debug {
+            std::env::set_var("BICEP_DEBUG", "true");
+        }
+        return review_pull_request(args).await;
+    }
+
+    // Fall back to original file-based review
     let config = initialize_application()?;
     let reviews = analyze_bicep_file(&config).await?;
     let report = generate_final_report(reviews, config.minimum_severity).await?;
@@ -275,4 +284,83 @@ fn add_critical_warning(output: &mut String, findings: &[&ValidationResult]) {
     if findings.iter().any(|f| f.severity == 5) {
         output.push_str("\n⚠️ **CRITICAL ISSUES FOUND!** These must be addressed before deployment.\n");
     }
+}
+
+async fn review_pull_request(args: AzureDevOpsArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let files = get_modified_bicep_files(
+        &args.organization,
+        &args.project,
+        args.pull_request_id,
+        &args.pat,
+    ).await?;
+
+    let best_practices_content = fs::read_to_string(&args.best_practices_file)?;
+
+    for file in files {
+        if args.debug {
+            println!("Reviewing file: {}", file.path);
+        }
+
+        let content = get_file_content(
+            &args.organization,
+            &args.project,
+            args.pull_request_id,
+            &file.path,
+            &args.pat,
+        ).await?;
+
+        let mut all_reviews = Vec::new();
+        for category in DEFAULT_CATEGORIES.iter() {
+            let review = analyze_category(
+                &content,
+                &best_practices_content,
+                category,
+                args.debug
+            ).await?;
+            all_reviews.push(review);
+        }
+
+        let request = create_report_request(&all_reviews);
+        let response = call_azure_openai(&request).await?;
+        let report: FinalReport = serde_json::from_str(&response.choices[0].message.content)?;
+        
+        let findings = filter_and_sort_findings(&report, args.minimum_severity);
+        if !findings.is_empty() {
+            let comment = format_pr_comment(&file.path, &findings);
+            create_review_thread(
+                &args.organization,
+                &args.project,
+                args.pull_request_id,
+                &file.path,
+                &comment,
+                &args.pat,
+            ).await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn format_pr_comment(file_path: &str, findings: &[&ValidationResult]) -> String {
+    let mut comment = format!("## Bicep Review Results for `{}`\n\n", file_path);
+    
+    for finding in findings {
+        let severity_emoji = match finding.severity {
+            5 => "🚨",
+            4 => "⚠️",
+            3 => "⚡",
+            2 => "ℹ️",
+            _ => "💡",
+        };
+
+        comment.push_str(&format!(
+            "### {} Severity {}: {}\n**Impact:** {}\n\n",
+            severity_emoji,
+            finding.severity,
+            finding.finding,
+            finding.impact
+        ));
+    }
+
+    comment
 }

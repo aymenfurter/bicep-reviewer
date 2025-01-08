@@ -1,0 +1,79 @@
+trigger: none # We only want this to run on PRs
+
+pr:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - '**/*.bicep'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: bicep-reviewer-params
+  - name: CARGO_TERM_COLOR
+    value: always
+  - name: RUSTC_WRAPPER
+    value: sccache
+  - name: SCCACHE_CACHE_SIZE
+    value: 2G
+  - name: RUSTUP_TOOLCHAIN
+    value: stable
+
+steps:
+- task: Cache@2
+  inputs:
+    key: 'rust | "$(Agent.OS)" | Cargo.lock'
+    path: |
+      ~/.cargo/registry
+      ~/.cargo/git
+      target
+    restoreKeys: |
+      rust | "$(Agent.OS)"
+
+- task: Cache@2
+  inputs:
+    key: 'sccache | "$(Agent.OS)"'
+    path: ~/.cache/sccache
+
+- script: |
+    curl -L https://github.com/mozilla/sccache/releases/download/v0.3.3/sccache-v0.3.3-x86_64-unknown-linux-musl.tar.gz | tar xz
+    mv sccache-*/sccache ~/.cargo/bin/
+  displayName: 'Install sccache'
+
+- script: |
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source $HOME/.cargo/env
+    rustup component add clippy
+  displayName: 'Install Rust'
+
+- script: |
+    source $HOME/.cargo/env
+    cargo build --release
+  displayName: 'Build Bicep Reviewer'
+
+- task: DownloadSecureFile@1
+  name: bestPractices
+  inputs:
+    secureFile: 'bicep-best-practices.md'
+  displayName: 'Download Best Practices File'
+
+- script: |
+    source $HOME/.cargo/env
+    ./target/release/bicep-reviewer \
+      --organization $(System.CollectionUri) \
+      --project $(System.TeamProject) \
+      --pull-request-id $(System.PullRequest.PullRequestId) \
+      --pat $(System.AccessToken) \
+      --best-practices-file $(bestPractices.secureFilePath) \
+      --minimum-severity 3
+  env:
+    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+    AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+    AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    AZURE_SEARCH_ENDPOINT: $(AZURE_SEARCH_ENDPOINT)
+    AZURE_SEARCH_ADMIN_KEY: $(AZURE_SEARCH_ADMIN_KEY)
+    AZURE_SEARCH_INDEX: $(AZURE_SEARCH_INDEX)
+  displayName: 'Run Bicep Review'
