@@ -54,12 +54,6 @@ steps:
     cargo build --release
   displayName: 'Build Bicep Reviewer'
 
-- task: DownloadSecureFile@1
-  name: bestPractices
-  inputs:
-    secureFile: 'bicep-best-practices.md'
-  displayName: 'Download Best Practices File'
-
 - script: |
     source $HOME/.cargo/env
     ./target/release/bicep-reviewer \
@@ -67,7 +61,7 @@ steps:
       --project $(System.TeamProject) \
       --pull-request-id $(System.PullRequest.PullRequestId) \
       --pat $(System.AccessToken) \
-      --best-practices-file $(bestPractices.secureFilePath) \
+      --best-practices-file $(Build.SourcesDirectory)/bicep-best-practices.md \
       --minimum-severity 3
   env:
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
