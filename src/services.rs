@@ -1,6 +1,7 @@
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use crate::models::{PullRequestFile, Thread, ThreadComment, ThreadContext};
 
 const DEFAULT_API_VERSION: &str = "2023-03-15-preview";
@@ -323,7 +324,7 @@ pub async fn get_modified_bicep_files(
 
     let response = client
         .get(&url)
-        .header("Authorization", format!("Basic {}", base64::encode(format!(":{}", pat))))
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
         .send()
         .await?
         .error_for_status()?
@@ -365,7 +366,7 @@ pub async fn get_file_content(
 
     let response = client
         .get(&url)
-        .header("Authorization", format!("Basic {}", base64::encode(format!(":{}", pat))))
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
         .send()
         .await?
         .error_for_status()?
@@ -403,7 +404,7 @@ pub async fn create_review_thread(
 
     client
         .post(&url)
-        .header("Authorization", format!("Basic {}", base64::encode(format!(":{}", pat))))
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
         .json(&thread)
         .send()
         .await?

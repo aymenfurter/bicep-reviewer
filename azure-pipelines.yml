@@ -32,12 +32,23 @@ steps:
 
 - script: |
     source $HOME/.cargo/env
-    ./target/release/bicep-reviewer \
-      --organization $(System.CollectionUri) \
-      --project $(System.TeamProject) \
-      --pull-request-id $(System.PullRequest.PullRequestId) \
-      --pat $(System.AccessToken) \
-      --best-practices-file $(Build.SourcesDirectory)/bicep-best-practices.md \
+    if [ -z "$(System.PullRequest.PullRequestId)" ]; then
+      echo "Error: Pull Request ID is not set"
+      exit 1
+    fi
+    
+    BINARY_PATH="$(Build.SourcesDirectory)/target/release/bicep-reviewer"
+    if [ ! -f "$BINARY_PATH" ]; then
+      echo "Error: Binary not found at $BINARY_PATH"
+      exit 1
+    fi
+    
+    "$BINARY_PATH" \
+      --organization "$(System.CollectionUri)" \
+      --project "$(System.TeamProject)" \
+      --pull-request-id "$(System.PullRequest.PullRequestId)" \
+      --pat "$(System.AccessToken)" \
+      --best-practices-file "$(Build.SourcesDirectory)/bicep-best-practices.md" \
       --minimum-severity 3
   env:
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
