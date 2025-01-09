@@ -391,6 +391,61 @@ struct IterationItem {
     path: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct PullRequestInfo {
+    #[serde(rename = "sourceRefName")]
+    source_ref_name: String,
+}
+
+/// Get PR details including source branch
+pub async fn get_pull_request_info(
+    org: &str,
+    project: &str,
+    repo_id: &str,
+    pr_id: i32,
+    pat: &str,
+) -> Result<PullRequestInfo, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let debug_enabled = is_debug_enabled();
+
+    let org_url = if org.starts_with("https://dev.azure.com") {
+        org.trim_end_matches('/').to_string()
+    } else if org.contains("dev.azure.com") {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    } else {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    };
+
+    let proj_enc = urlencoding::encode(project);
+    
+    let url = format!(
+        "{}/{}/_apis/git/repositories/{}/pullRequests/{}?api-version=7.1",
+        org_url, proj_enc, repo_id, pr_id
+    );
+
+    if debug_enabled {
+        println!("(DEBUG) get_pull_request_info => {}", url);
+    }
+
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let body = resp.text().await?;
+        if debug_enabled {
+            eprintln!("(DEBUG) get_pull_request_info => error: {} => {}", st, body);
+        }
+        return Err(format!("PR info API error: status={}, body={}", st, body).into());
+    }
+
+    let pr_info = resp.json::<PullRequestInfo>().await?;
+    Ok(pr_info)
+}
+
 /// Retrieve the GUID of the repository from its name
 pub async fn get_repository_id(
     org: &str,
@@ -571,13 +626,17 @@ pub async fn get_file_content(
     org: &str,
     project: &str,
     repo_id: &str,
-    _pr_id: i32,  // Added underscore prefix to unused parameter
+    pr_id: i32,
     path: &str,
     object_id: &str,
     pat: &str,
 ) -> Result<String, Box<dyn Error>> {
     let client = reqwest::Client::new();
     let debug_enabled = is_debug_enabled();
+
+    // Get PR info to get source branch
+    let pr_info = get_pull_request_info(org, project, repo_id, pr_id, pat).await?;
+    let source_branch = pr_info.source_ref_name.trim_start_matches("refs/heads/");
 
     let org_url = if org.starts_with("https://dev.azure.com") {
         org.trim_end_matches('/').to_string()
@@ -591,9 +650,10 @@ pub async fn get_file_content(
     let path_enc = urlencoding::encode(path);
     
     let url = format!(
-        "{}/{}/_apis/git/repositories/{}/items?objectId={}&path={}&includeContent=true&api-version=7.1",
-        org_url, proj_enc, repo_id, object_id, path_enc
+        "{}/{}/_apis/git/repositories/{}/items?path={}&includeContent=true&versionDescriptor.version={}&api-version=7.1",
+        org_url, proj_enc, repo_id, path_enc, source_branch
     );
+    
     if debug_enabled {
         println!("(DEBUG) get_file_content => {}", url);
     }
