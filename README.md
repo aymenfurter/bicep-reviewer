@@ -152,16 +152,62 @@ The tool can be integrated into your Azure DevOps pull request workflow to autom
 
 2. Add this complete azure-pipelines.yml to your repository:
 ```
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - '**/*.bicep'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: bicep-reviewer-params
+  - name: CARGO_TERM_COLOR
+    value: always
+  - name: RUSTUP_TOOLCHAIN
+    value: stable
+
+steps:
+- task: DownloadSecureFile@1
+  inputs:
+    secureFile: 'bicep_llm_validator'
+  name: downloadBinary
+  displayName: 'Download Bicep Validator Binary'
+
+- task: DownloadSecureFile@1
+  inputs:
+    secureFile: 'bicep-best-practices.md'
+  name: downloadRules
+  displayName: 'Download Bicep Best Practices Rules'
+
 - script: |
+    chmod +x $(Agent.TempDirectory)/$(downloadBinary.secureFilePath)
+  displayName: 'Make Binary Executable'
+
+- script: |
+    if [ -z "$(System.PullRequest.PullRequestId)" ]; then
+      echo "Error: No PullRequest ID"
+      exit 1
+    fi
+
+    BINARY_PATH="$(Agent.TempDirectory)/$(downloadBinary.secureFilePath)"
+    RULES_FILE="$(Agent.TempDirectory)/$(downloadRules.secureFilePath)"
+
     ORG_NAME=$(echo "$(System.CollectionUri)" | sed -E 's@.*/dev\.azure\.com/([^/]+).*@\1@')
+
     "$BINARY_PATH" azure \
       --organization "$ORG_NAME" \
-      --project "$(System.TeamProject)" \
+      --project "automation" \
       --pull-request-id "$(System.PullRequest.PullRequestId)" \
       --pat "$(ADO_PAT)" \
-      --best-practices-file "$(Build.SourcesDirectory)/bicep-best-practices.md" \
+      --best-practices-file "$RULES_FILE" \
       --minimum-severity 3 \
-      --repository "$(Build.Repository.Name)" \
+      --repository "<your-repository-name>" \
       --simple
   env:
     ADO_PAT: $(ADO_PAT)
@@ -177,6 +223,8 @@ The tool can be integrated into your Azure DevOps pull request workflow to autom
 3. Pipeline Setup Requirements:
    - Create a PAT (Personal Access Token) with Code (Read & Write) permissions
    - Add it as a pipeline variable named `ADO_PAT` (mark as secret)
+   - Build and add a bicep-validator as a Secure File
+   - Add your bicep rule set as a Secure File
    - Create a variable group containing Azure OpenAI and Search settings
 
 4. Pipeline Features:
