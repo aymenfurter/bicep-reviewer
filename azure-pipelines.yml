@@ -1,12 +1,12 @@
-trigger: none # We only want this to run on PRs
+trigger: none
 
 pr:
   branches:
     include:
-    - main
+      - main
   paths:
     include:
-    - '**/*.bicep'
+      - '**/*.bicep'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -32,25 +32,32 @@ steps:
 
 - script: |
     source $HOME/.cargo/env
+
     if [ -z "$(System.PullRequest.PullRequestId)" ]; then
-      echo "Error: Pull Request ID is not set"
+      echo "Error: No PullRequest ID"
       exit 1
     fi
-    
+
     BINARY_PATH="$(Build.SourcesDirectory)/target/release/bicep_llm_validator"
     if [ ! -f "$BINARY_PATH" ]; then
-      echo "Error: Binary not found at $BINARY_PATH"
+      echo "Error: Binary not found"
       exit 1
     fi
-    
-    "$BINARY_PATH" \
-      --organization "$(System.CollectionUri)" \
-      --project "$(System.TeamProject)" \
+
+    ORG_NAME=$(echo "$(System.CollectionUri)" | sed -E 's@.*/dev\.azure\.com/([^/]+).*@\1@')
+    echo "Detected Organization: $ORG_NAME"
+
+    "$BINARY_PATH" azure \
+      --organization "$ORG_NAME" \
+      --project "automation" \
       --pull-request-id "$(System.PullRequest.PullRequestId)" \
-      --pat "$(System.AccessToken)" \
+      --pat "$(ADO_PAT)" \
       --best-practices-file "$(Build.SourcesDirectory)/bicep-best-practices.md" \
-      --minimum-severity 3
+      --minimum-severity 3 \
+      --repository "bicep-reviewer" \
+      --simple
   env:
+    ADO_PAT: $(ADO_PAT)
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)

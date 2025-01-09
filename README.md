@@ -31,7 +31,7 @@ bicep-analyzer is a command-line tool that leverages AI to analyze Azure Bicep I
   
   This focused approach allows the AI to concentrate deeply on specific aspects rather than trying to analyze everything simultaneously, resulting in more thorough and accurate findings.
   
-- ⚡ **Intelligent Search**: Utilizes Azure AI Search for finding and learning from relevant code examples (Currently dummy files)
+- ⚡ **Intelligent Search**: Utilizes Azure AI Search for finding and learning from relevant code examples (Currently the search lookup is not yet fully implemented)
 - 📊 **Severity-Based Findings**: Clear categorization of issues from Critical (5) to Suggestions (1)
 
 ## 🚀 Quickstart
@@ -124,24 +124,68 @@ cargo build --release
 
 ## 🛠️ Usage
 
+### Local Analysis
+
 ```bash
 bicep-analyzer \
   --bicep-file <path-to-bicep> \
   --best-practices-file <path-to-md> \
   [--category <specific-category>] \
   [--minimum-severity <1-5>] \
+  [--simple] \
   [--debug]
 ```
 
-### Command Line Arguments
+### Azure DevOps Integration
 
-| Argument | Description | Required |
-|----------|-------------|----------|
-| `--bicep-file` | Path to the Bicep file for analysis | Yes |
-| `--best-practices-file` | Path to markdown file containing best practices | Yes |
-| `--category` | Optional specific category to analyze | No |
-| `--minimum-severity` | Minimum severity level (1-5) to include in results | No |
-| `--debug` | Enable debug output for LLM requests/responses | No |
+The tool can be integrated into your Azure DevOps pull request workflow to automatically review Bicep files. Here's how to set it up:
+
+1. Create a variable group named `bicep-reviewer-params` containing:
+   ```
+   AZURE_OPENAI_ENDPOINT
+   AZURE_OPENAI_API_KEY
+   AZURE_OPENAI_DEPLOYMENT
+   AZURE_SEARCH_ENDPOINT
+   AZURE_SEARCH_ADMIN_KEY
+   AZURE_SEARCH_INDEX
+   ```
+
+2. Add this complete azure-pipelines.yml to your repository:
+```
+- script: |
+    ORG_NAME=$(echo "$(System.CollectionUri)" | sed -E 's@.*/dev\.azure\.com/([^/]+).*@\1@')
+    "$BINARY_PATH" azure \
+      --organization "$ORG_NAME" \
+      --project "$(System.TeamProject)" \
+      --pull-request-id "$(System.PullRequest.PullRequestId)" \
+      --pat "$(ADO_PAT)" \
+      --best-practices-file "$(Build.SourcesDirectory)/bicep-best-practices.md" \
+      --minimum-severity 3 \
+      --repository "$(Build.Repository.Name)" \
+      --simple
+  env:
+    ADO_PAT: $(ADO_PAT)
+    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+    AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+    AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    AZURE_SEARCH_ENDPOINT: $(AZURE_SEARCH_ENDPOINT)
+    AZURE_SEARCH_ADMIN_KEY: $(AZURE_SEARCH_ADMIN_KEY)
+    AZURE_SEARCH_INDEX: $(AZURE_SEARCH_INDEX)
+  displayName: 'Run Bicep Review'
+```
+
+3. Pipeline Setup Requirements:
+   - Create a PAT (Personal Access Token) with Code (Read & Write) permissions
+   - Add it as a pipeline variable named `ADO_PAT` (mark as secret)
+   - Create a variable group containing Azure OpenAI and Search settings
+
+4. Pipeline Features:
+   - Automatically triggers on PRs containing .bicep files
+   - Builds the analyzer from source
+   - Uses organization name from ADO URL
+   - Posts findings as PR comments
+   - Supports both simple and detailed analysis modes
+   - Configurable severity thresholds
 
 ## 🔧 Environment Setup
 

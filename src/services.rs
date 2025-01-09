@@ -1,14 +1,14 @@
+// services.rs
+
+use crate::models::{PullRequestFile, Thread, ThreadComment, ThreadContext};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use crate::models::{PullRequestFile, Thread, ThreadComment, ThreadContext};
 
-const DEFAULT_API_VERSION: &str = "2023-03-15-preview";
-const DEFAULT_TEMPERATURE: f32 = 0.3;
-const HIGH_TEMPERATURE: f32 = 0.7;
+/// ------------------------------------------------------------
+/// Azure OpenAI
 
-/// Represents a request to the Azure OpenAI API
 #[derive(Debug, Serialize)]
 pub struct ChatCompletionRequest {
     pub model: String,
@@ -17,237 +17,30 @@ pub struct ChatCompletionRequest {
     pub response_format: ResponseFormat,
 }
 
-/// Specifies the format for API responses
-#[derive(Debug, Serialize)]
-pub struct ResponseFormat {
-    #[serde(rename = "type")]
-    pub format_type: String,
-}
-
-/// Represents a message in the chat completion
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
 }
 
-/// Response from the chat completion API
+#[derive(Debug, Serialize)]
+pub struct ResponseFormat {
+    #[serde(rename = "type")]
+    pub format_type: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatCompletionResponse {
     pub choices: Vec<Choice>,
 }
 
-/// Individual choice from the API response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Choice {
     pub message: ChatMessage,
 }
 
-/// Azure Search response structure
-#[derive(Debug, Deserialize)]
-pub struct SearchResults {
-    pub value: Vec<SearchDoc>,
-}
+const DEFAULT_API_VERSION: &str = "2023-03-15-preview";
 
-/// Individual document from search results
-#[derive(Debug, Deserialize)]
-pub struct SearchDoc {
-    pub content: String,
-}
-
-/// Generates best practices for a specific category
-pub async fn generate_category_practices(
-    markdown: &str, 
-    category: &str
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let request = create_practices_request(markdown, category)?;
-    let response = call_azure_openai(&request).await?;
-    
-    Ok(response.choices[0].message.content
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.trim().to_string())
-        .collect())
-}
-
-/// Creates the request for generating best practices
-fn create_practices_request(
-    markdown: &str, 
-    category: &str
-) -> Result<ChatCompletionRequest, Box<dyn Error>> {
-    Ok(ChatCompletionRequest {
-        model: std::env::var("AZURE_OPENAI_DEPLOYMENT")?,
-        messages: vec![
-            create_system_message(),
-            create_user_message(markdown, category),
-        ],
-        temperature: HIGH_TEMPERATURE,
-        response_format: ResponseFormat {
-            format_type: "text".to_string(),
-        },
-    })
-}
-
-/// Creates the system message for the API request
-fn create_system_message() -> ChatMessage {
-    ChatMessage {
-        role: "system".to_string(),
-        content: "You are an expert in Bicep Infrastructure as Code best practices.".to_string(),
-    }
-}
-
-/// Creates the user message for the API request
-fn create_user_message(markdown: &str, category: &str) -> ChatMessage {
-    ChatMessage {
-        role: "user".to_string(),
-        content: format!(
-            "Given this Bicep best practices documentation:\n\n{}\n\n\
-             Extract and enhance the best practices specifically for the '{}' category.\n\
-             Focus on security, maintainability, and reliability.\n\
-             Return as a numbered list, one practice per line.",
-            markdown, category
-        ),
-    }
-}
-
-/// Validates a category against best practices
-pub async fn validate_category(
-    code: &str,
-    category: &str,
-    practices: &[String],
-    samples: &[String]
-) -> Result<String, Box<dyn Error>> {
-    let request = create_validation_request(code, category, practices, samples)?;
-    let response = call_azure_openai(&request).await?;
-    Ok(format!("Category: {}\n{}", category, response.choices[0].message.content))
-}
-
-/// Creates the request for category validation
-fn create_validation_request(
-    code: &str,
-    category: &str,
-    practices: &[String],
-    samples: &[String]
-) -> Result<ChatCompletionRequest, Box<dyn Error>> {
-    Ok(ChatCompletionRequest {
-        model: std::env::var("AZURE_OPENAI_DEPLOYMENT")?,
-        messages: vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: "You are a Bicep code reviewer. For each issue, provide severity (1-5) and explain the impact.".to_string(),
-            },
-            ChatMessage {
-                role: "user".to_string(),
-                content: create_validation_prompt(code, category, practices, samples),
-            }
-        ],
-        temperature: DEFAULT_TEMPERATURE,
-        response_format: ResponseFormat {
-            format_type: "text".to_string(),
-        },
-    })
-}
-
-/// Creates the validation prompt for the API request
-fn create_validation_prompt(
-    code: &str,
-    category: &str,
-    practices: &[String],
-    samples: &[String]
-) -> String {
-    format!(
-        "Review this Bicep code against these best practices for the {} category.\n\
-         Only review the code that is under control of the developer.\n\
-         Rate each issue severity 1-5:\n\
-         5: Critical/blocking issue that must be fixed\n\
-         4: Serious issue with significant risks\n\
-         3: Important issue to address\n\
-         2: Minor improvement needed\n\
-         1: Suggestion for better practices\n\n\
-         Best Practices:\n{}\n\n\
-         Reference Examples:\n{}\n\n\
-         Code to Review:\n{}\n\n\
-         For each issue found, describe:\n\
-         - The issue and where it occurs\n\
-         - Its severity (1-5)\n\
-         - The potential impact",
-        category,
-        practices.join("\n"),
-        samples.join("\n---\n"),
-        code
-    )
-}
-
-/// Queries Azure Search for relevant examples
-pub async fn query_azure_search(category: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    let search_config = get_search_config()?;
-    let url = build_search_url(&search_config, category);
-    let results = execute_search_request(&url, &search_config.key).await?;
-    
-    Ok(results.value.into_iter().map(|d| d.content).collect())
-}
-
-/// Configuration for Azure Search
-struct SearchConfig {
-    endpoint: String,
-    key: String,
-    index: String,
-}
-
-/// Retrieves search configuration from environment variables
-fn get_search_config() -> Result<SearchConfig, Box<dyn Error>> {
-    Ok(SearchConfig {
-        endpoint: std::env::var("AZURE_SEARCH_ENDPOINT")?,
-        key: std::env::var("AZURE_SEARCH_ADMIN_KEY")?,
-        index: std::env::var("AZURE_SEARCH_INDEX")?,
-    })
-}
-
-/// Builds the search URL
-fn build_search_url(config: &SearchConfig, category: &str) -> String {
-    format!(
-        "{}/indexes/{}/docs?api-version=2021-04-30-Preview&search={}&$top=2",
-        config.endpoint, config.index, category
-    )
-}
-
-/// Executes the search request
-async fn execute_search_request(url: &str, key: &str) -> Result<SearchResults, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .header("api-key", key)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-
-    Ok(serde_json::from_str(&response)?)
-}
-
-/// Calls Azure OpenAI API
-pub async fn call_azure_openai(
-    request: &ChatCompletionRequest
-) -> Result<ChatCompletionResponse, Box<dyn Error>> {
-    let debug_enabled = is_debug_enabled();
-    
-    if debug_enabled {
-        log_request(request)?;
-    }
-
-    let config = get_openai_config()?;
-    let url = build_openai_url(&config);
-    let response = execute_openai_request(&url, &config.api_key, request).await?;
-    
-    if debug_enabled {
-        log_response(&response)?;
-    }
-
-    Ok(response)
-}
-
-/// Configuration for Azure OpenAI
 struct OpenAIConfig {
     endpoint: String,
     api_key: String,
@@ -255,7 +48,36 @@ struct OpenAIConfig {
     api_version: String,
 }
 
-/// Retrieves OpenAI configuration from environment variables
+/// Call the Azure OpenAI chat
+pub async fn call_azure_openai(
+    request: &ChatCompletionRequest,
+) -> Result<ChatCompletionResponse, Box<dyn Error>> {
+    if is_debug_enabled() {
+        println!("(DEBUG) call_azure_openai - Request:\n{}", serde_json::to_string_pretty(request)?);
+    }
+
+    let cfg = get_openai_config()?;
+    let url = format!(
+        "{}/openai/deployments/{}/chat/completions?api-version={}",
+        cfg.endpoint, cfg.deployment, cfg.api_version
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("api-key", &cfg.api_key)
+        .json(request)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let json = resp.json::<ChatCompletionResponse>().await?;
+    if is_debug_enabled() {
+        println!("(DEBUG) call_azure_openai - Response:\n{}", serde_json::to_string_pretty(&json)?);
+    }
+    Ok(json)
+}
+
 fn get_openai_config() -> Result<OpenAIConfig, Box<dyn Error>> {
     Ok(OpenAIConfig {
         endpoint: std::env::var("AZURE_OPENAI_ENDPOINT")?,
@@ -266,174 +88,598 @@ fn get_openai_config() -> Result<OpenAIConfig, Box<dyn Error>> {
     })
 }
 
-/// Builds the OpenAI API URL
-fn build_openai_url(config: &OpenAIConfig) -> String {
-    format!(
-        "{}/openai/deployments/{}/chat/completions?api-version={}",
-        config.endpoint, config.deployment, config.api_version
-    )
-}
-
-/// Executes the OpenAI API request
-async fn execute_openai_request(
-    url: &str,
-    api_key: &str,
-    request: &ChatCompletionRequest
-) -> Result<ChatCompletionResponse, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-    let response = client
-        .post(url)
-        .header("api-key", api_key)
-        .json(request)
-        .send()
-        .await?
-        .error_for_status()?;
-
-    Ok(response.json().await?)
-}
-
-/// Checks if debug mode is enabled
 fn is_debug_enabled() -> bool {
     std::env::var("BICEP_DEBUG").unwrap_or_else(|_| "false".to_string()) == "true"
 }
 
-/// Logs the API request for debugging
-fn log_request(request: &ChatCompletionRequest) -> Result<(), Box<dyn Error>> {
-    println!("\n=== LLM Request ===\n{}", serde_json::to_string_pretty(request)?);
-    Ok(())
-}
+/// ------------------------------------------------------------
+/// Bicep analysis function: analyze_category
 
-/// Logs the API response for debugging
-fn log_response(response: &ChatCompletionResponse) -> Result<(), Box<dyn Error>> {
-    println!("\n=== LLM Response ===\n{}", serde_json::to_string_pretty(response)?);
-    Ok(())
-}
-
-/// Gets modified Bicep files from a pull request
-pub async fn get_modified_bicep_files(
-    org: &str,
-    project: &str,
-    pr_id: i32,
-    pat: &str,
-) -> Result<Vec<PullRequestFile>, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-    let url = format!(
-        "{}_apis/git/repositories/{}/pullRequests/{}/changes?api-version=6.0",
-        org, project, pr_id
-    );
-
-    let response = client
-        .get(&url)
-        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<serde_json::Value>()
-        .await?;
-
-    let files = response["changes"]
-        .as_array()
-        .ok_or("No changes found")?
-        .iter()
-        .filter(|change| {
-            change["item"]["path"]
-                .as_str()
-                .map(|path| path.ends_with(".bicep"))
-                .unwrap_or(false)
-        })
-        .map(|change| PullRequestFile {
-            path: change["item"]["path"].as_str().unwrap().to_string(),
-            change_type: change["changeType"].as_str().unwrap().to_string(),
-        })
-        .collect();
-
-    Ok(files)
-}
-
-/// Gets file content from a pull request
-pub async fn get_file_content(
-    org: &str,
-    project: &str,
-    pr_id: i32,
-    path: &str,
-    pat: &str,
+/// This function pulls best practices, references, and calls validate
+pub async fn analyze_category(
+    bicep_code: &str,
+    best_practices_md: &str,
+    category: &str,
+    debug: bool,
 ) -> Result<String, Box<dyn Error>> {
-    let client = reqwest::Client::new();
+    if debug {
+        println!("(DEBUG) analyze_category => starting analysis for '{}'", category);
+        println!("(DEBUG) analyze_category => bicep code length: {}", bicep_code.len());
+        println!("(DEBUG) analyze_category => best practices doc length: {}", best_practices_md.len());
+    }
+
+    let practices = match generate_category_practices(best_practices_md, category).await {
+        Ok(p) => {
+            if debug {
+                println!("(DEBUG) analyze_category => found {} practices", p.len());
+            }
+            p
+        }
+        Err(e) => {
+            eprintln!("(DEBUG) analyze_category => generate_category_practices failed: {}", e);
+            return Err(e);
+        }
+    };
+
+    if debug {
+        println!("(DEBUG) analyze_category => getting references for '{}'", category);
+    }
+
+    let references = match query_azure_search(category).await {
+        Ok(r) => {
+            if debug {
+                println!("(DEBUG) analyze_category => found {} references", r.len());
+            }
+            r
+        }
+        Err(e) => {
+            eprintln!("(DEBUG) analyze_category => query_azure_search failed: {}", e);
+            return Err(e);
+        }
+    };
+
+    if debug {
+        println!("(DEBUG) analyze_category => validating category");
+    }
+
+    match validate_category(bicep_code, category, &practices, &references).await {
+        Ok(text) => {
+            if debug {
+                println!("(DEBUG) analyze_category => validation completed");
+            }
+            Ok(text)
+        }
+        Err(e) => {
+            eprintln!("(DEBUG) analyze_category => validate_category failed: {}", e);
+            Err(e)
+        }
+    }
+}
+
+/// Extract best practices lines from MD
+pub async fn generate_category_practices(
+    markdown: &str,
+    category: &str,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let deployment = match std::env::var("AZURE_OPENAI_DEPLOYMENT") {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("(DEBUG) Failed to get AZURE_OPENAI_DEPLOYMENT: {}", e);
+            return Err(Box::new(e));
+        }
+    };
+
+    let req = ChatCompletionRequest {
+        model: deployment.clone(),
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are an expert in Bicep IaC best practices.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "Given this Bicep best practices doc:\n\n{}\n\n\
+                     Extract best practices specifically for the '{}' category.\n\
+                     Return as a list, one item per line.",
+                    markdown, category
+                ),
+            },
+        ],
+        temperature: 0.7,
+        response_format: ResponseFormat {
+            format_type: "text".to_string(),
+        },
+    };
+
+    match call_azure_openai(&req).await {
+        Ok(resp) => {
+            let lines: Vec<_> = resp.choices[0]
+                .message
+                .content
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+
+            Ok(lines)
+        }
+        Err(e) => {
+            eprintln!("(DEBUG) generate_category_practices => OpenAI call failed: {}", e);
+            Err(e)
+        }
+    }
+}
+
+/// Validate the Bicep code snippet
+pub async fn validate_category(
+    code: &str,
+    category: &str,
+    practices: &[String],
+    references: &[String],
+) -> Result<String, Box<dyn Error>> {
+    let deployment = match std::env::var("AZURE_OPENAI_DEPLOYMENT") {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("(DEBUG) Failed to get AZURE_OPENAI_DEPLOYMENT: {}", e);
+            return Err(Box::new(e));
+        }
+    };
+
+    let req = ChatCompletionRequest {
+        model: deployment,
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are a Bicep code reviewer. For each issue, provide severity (1-5) and impact."
+                    .to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "Review Bicep code for category '{}'.\n\
+                     Severity scale:\n  5 = Critical\n  4 = Serious\n  3 = Important\n  2 = Minor\n  1 = Suggestion\n\n\
+                     Best Practices:\n{}\n\n\
+                     References:\n{}\n\n\
+                     Code:\n{}\n\n\
+                     For each issue:\n - The issue\n - Severity\n - Impact",
+                    category,
+                    practices.join("\n"),
+                    references.join("\n---\n"),
+                    code,
+                ),
+            },
+        ],
+        temperature: 0.3,
+        response_format: ResponseFormat {
+            format_type: "text".to_string(),
+        },
+    };
+
+    let resp = call_azure_openai(&req).await?;
+    Ok(format!("Category: {}\n{}", category, resp.choices[0].message.content))
+}
+
+/// Simple validation without categories
+pub async fn validate_simple(
+    code: &str,
+    best_practices: &str,
+) -> Result<String, Box<dyn Error>> {
+    let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT")?;
+
+    let req = ChatCompletionRequest {
+        model: deployment,
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are a Bicep code reviewer. Review code against best practices and return findings in JSON format.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "Review this Bicep code against these best practices.\n\
+                     Return findings in this exact JSON format:\n\
+                     {{\n  \"findings\": [\n    {{\n\
+                     \"category\": \"General\",\n\"finding\": \"...\",\n\"severity\": 1-5,\n\"impact\": \"...\"\n    }}\n  ]\n}}\n\n\
+                     Best Practices:\n{}\n\n\
+                     Code to Review:\n{}\n\n\
+                     Severity scale:\n\
+                     5 = Critical security/reliability issues\n\
+                     4 = Serious issues that should be fixed\n\
+                     3 = Important improvements needed\n\
+                     2 = Minor suggestions\n\
+                     1 = Style/documentation suggestions",
+                    best_practices,
+                    code
+                ),
+            },
+        ],
+        temperature: 0.3,
+        response_format: ResponseFormat {
+            format_type: "json_object".to_string(),
+        },
+    };
+
+    let resp = call_azure_openai(&req).await?;
+    Ok(resp.choices[0].message.content.clone())
+}
+
+/// ------------------------------------------------------------
+/// Azure Search references
+
+#[derive(Debug, Deserialize)]
+struct SearchResults {
+    pub value: Vec<SearchDoc>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchDoc {
+    pub content: String,
+}
+
+pub async fn query_azure_search(category: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let sc = get_search_config()?;
     let url = format!(
-        "{}_apis/git/repositories/{}/pullRequests/{}/iterations/1/changes/{}/content?api-version=6.0",
-        org, project, pr_id, path
+        "{}/indexes/{}/docs?api-version=2021-04-30-Preview&search={}&$top=2",
+        sc.endpoint, sc.index, category
     );
 
-    let response = client
+    let client = reqwest::Client::new();
+    let body = client
         .get(&url)
-        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
+        .header("api-key", &sc.key)
         .send()
         .await?
         .error_for_status()?
         .text()
         .await?;
 
-    Ok(response)
+    let parsed: SearchResults = serde_json::from_str(&body)?;
+    Ok(parsed.value.into_iter().map(|doc| doc.content).collect())
 }
 
-/// Creates a review comment thread in the pull request
+struct SearchConfig {
+    endpoint: String,
+    key: String,
+    index: String,
+}
+
+fn get_search_config() -> Result<SearchConfig, Box<dyn Error>> {
+    Ok(SearchConfig {
+        endpoint: std::env::var("AZURE_SEARCH_ENDPOINT")?,
+        key: std::env::var("AZURE_SEARCH_ADMIN_KEY")?,
+        index: std::env::var("AZURE_SEARCH_INDEX")?,
+    })
+}
+
+/// ------------------------------------------------------------
+/// Azure DevOps: Repo ID, Listing changed files, Creating comments
+
+#[derive(Debug, Deserialize)]
+struct PullRequestIteration {
+    id: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct PullRequestIterationList {
+    value: Vec<PullRequestIteration>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PullRequestIterationChanges {
+    #[serde(rename = "changeEntries")]
+    change_entries: Vec<IterationChangeEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct IterationChangeEntry {
+    #[serde(rename = "changeTrackingId")]
+    change_tracking_id: i32,
+    #[serde(rename = "changeId")]
+    change_id: i32,
+    item: Option<IterationItem>,
+    #[serde(rename = "changeType")]
+    change_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct IterationItem {
+    #[serde(rename = "objectId")]
+    object_id: Option<String>,
+    #[serde(rename = "originalObjectId")]
+    original_object_id: Option<String>,
+    path: Option<String>,
+}
+
+/// Retrieve the GUID of the repository from its name
+pub async fn get_repository_id(
+    org: &str,
+    project: &str,
+    repo_name: &str,
+    pat: &str,
+) -> Result<String, Box<dyn Error>> {
+    let debug_enabled = is_debug_enabled();
+    let client = reqwest::Client::new();
+
+    // Construct final org URL
+    let org_url = if org.starts_with("https://dev.azure.com") {
+        org.trim_end_matches('/').to_string()
+    } else if org.contains("dev.azure.com") {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    } else {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    };
+
+    let proj_enc = urlencoding::encode(project);
+    let repo_enc = urlencoding::encode(repo_name);
+
+    let url = format!(
+        "{}/{}/_apis/git/repositories/{}?api-version=7.1",
+        org_url, proj_enc, repo_enc
+    );
+
+    if debug_enabled {
+        println!("(DEBUG) get_repository_id => {}", url);
+    }
+
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let body = resp.text().await?;
+        if debug_enabled {
+            eprintln!("(DEBUG) get_repository_id => error: status={}, body={}", st, body);
+        }
+        return Err(format!("Repository request failed: status={}, body={}", st, body).into());
+    }
+
+    let repo_info = resp.json::<serde_json::Value>().await?;
+    Ok(repo_info["id"].as_str().unwrap_or(repo_name).to_string())
+}
+
+/// List changed Bicep files from the latest iteration
+pub async fn list_modified_bicep_files(
+    org: &str,
+    project: &str,
+    repo_id: &str,
+    pr_id: i32,
+    pat: &str,
+    debug: bool,
+) -> Result<Vec<PullRequestFile>, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+
+    let org_url = if org.starts_with("https://dev.azure.com") {
+        org.trim_end_matches('/').to_string()
+    } else if org.contains("dev.azure.com") {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    } else {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    };
+
+    let proj_enc = urlencoding::encode(project);
+
+    // 1) List PR iterations
+    let iter_url = format!(
+        "{}/{}/_apis/git/repositories/{}/pullRequests/{}/iterations?api-version=7.1",
+        org_url, proj_enc, repo_id, pr_id
+    );
+    if debug {
+        println!("(DEBUG) list_modified_bicep_files => iter_url = {}", iter_url);
+    }
+
+    let iter_resp = client
+        .get(&iter_url)
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
+        .send()
+        .await?;
+
+    if !iter_resp.status().is_success() {
+        let st = iter_resp.status();
+        let body = iter_resp.text().await?;
+        if debug {
+            eprintln!("(DEBUG) list_modified_bicep_files => iterations error: {} => {}", st, body);
+        }
+        return Err(format!("PullRequest iterations API error: status={}, body={}", st, body).into());
+    }
+
+    let iteration_list = iter_resp.json::<PullRequestIterationList>().await?;
+    if iteration_list.value.is_empty() {
+        if debug {
+            eprintln!("(DEBUG) PR has no iterations => no changes");
+        }
+        return Ok(vec![]);
+    }
+
+    let latest_iter_id = iteration_list.value.iter().map(|x| x.id).max().unwrap_or(1);
+
+    // 2) Get iteration changes
+    let changes_url = format!(
+        "{}/{}/_apis/git/repositories/{}/pullRequests/{}/iterations/{}/changes?api-version=7.1",
+        org_url, proj_enc, repo_id, pr_id, latest_iter_id
+    );
+    if debug {
+        println!("(DEBUG) list_modified_bicep_files => changes_url = {}", changes_url);
+    }
+
+    let changes_resp = client
+        .get(&changes_url)
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
+        .send()
+        .await?;
+
+    if !changes_resp.status().is_success() {
+        let st = changes_resp.status();
+        let body = changes_resp.text().await?;
+        if debug {
+            eprintln!("(DEBUG) iteration changes => error: {} => {}", st, body);
+        }
+        return Err(format!("Iteration changes API error: status={}, body={}", st, body).into());
+    }
+
+    let iteration_changes = changes_resp.json::<PullRequestIterationChanges>().await?;
+    
+    if debug {
+        println!("(DEBUG) Raw changes response: {}", serde_json::to_string_pretty(&iteration_changes)?);
+    }
+    
+    let mut results = Vec::new();
+    for entry in iteration_changes.change_entries {
+        if debug {
+            println!("(DEBUG) Processing change entry {}: {:?}", entry.change_tracking_id, entry);
+        }
+        
+        if let Some(item) = entry.item {
+            if let Some(path) = item.path {
+                if debug {
+                    println!("(DEBUG) Found changed file: {} (objectId: {:?}, originalObjectId: {:?})", 
+                        path, item.object_id, item.original_object_id);
+                }
+                
+                if path.ends_with(".bicep") {
+                    if debug {
+                        println!("(DEBUG) Adding .bicep file: {}", path);
+                    }
+                    
+                    results.push(PullRequestFile {
+                        path,
+                        change_type: entry.change_type.unwrap_or_else(|| "edit".to_string()),
+                        object_id: item.object_id.unwrap_or_default(),
+                        original_object_id: item.original_object_id,
+                    });
+                }
+            }
+        }
+    }
+
+    if debug {
+        println!("(DEBUG) Found {} changed .bicep files in iteration {}", 
+            results.len(), latest_iter_id);
+        for file in &results {
+            println!("(DEBUG) - {} ({} / {})", file.path, file.change_type, file.object_id);
+        }
+    }
+
+    Ok(results)
+}
+
+/// Retrieve file content using object ID
+pub async fn get_file_content(
+    org: &str,
+    project: &str,
+    repo_id: &str,
+    _pr_id: i32,  // Added underscore prefix to unused parameter
+    path: &str,
+    object_id: &str,
+    pat: &str,
+) -> Result<String, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let debug_enabled = is_debug_enabled();
+
+    let org_url = if org.starts_with("https://dev.azure.com") {
+        org.trim_end_matches('/').to_string()
+    } else if org.contains("dev.azure.com") {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    } else {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    };
+
+    let proj_enc = urlencoding::encode(project);
+    let path_enc = urlencoding::encode(path);
+    
+    let url = format!(
+        "{}/{}/_apis/git/repositories/{}/items?objectId={}&path={}&includeContent=true&api-version=7.1",
+        org_url, proj_enc, repo_id, object_id, path_enc
+    );
+    if debug_enabled {
+        println!("(DEBUG) get_file_content => {}", url);
+    }
+
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
+        .header("Accept", "text/plain") // Explicitly request text
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let body = resp.text().await?;
+        if debug_enabled {
+            eprintln!("(DEBUG) get_file_content => error: {} => {}", st, body);
+        }
+        return Err(format!("File content API error: status={}, body={}", st, body).into());
+    }
+
+    // Get the content directly as text
+    let content = resp.text().await?;
+    if debug_enabled {
+        println!("(DEBUG) get_file_content => received {} bytes", content.len());
+    }
+    
+    Ok(content)
+}
+
+/// Create a top-level thread in the PR
 pub async fn create_review_thread(
     org: &str,
     project: &str,
     pr_id: i32,
+    repo_id: &str,
     file_path: &str,
     comment: &str,
     pat: &str,
 ) -> Result<(), Box<dyn Error>> {
     let client = reqwest::Client::new();
+    let debug_enabled = is_debug_enabled();
+
+    let org_url = if org.starts_with("https://dev.azure.com") {
+
+        org.trim_end_matches('/').to_string()
+    } else if org.contains("dev.azure.com") {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    } else {
+        format!("https://dev.azure.com/{}", org.trim_matches('/'))
+    };
+
+    let proj_enc = urlencoding::encode(project);
     let url = format!(
-        "{}_apis/git/repositories/{}/pullRequests/{}/threads?api-version=6.0",
-        org, project, pr_id
+        "{}/{}/_apis/git/repositories/{}/pullRequests/{}/threads?api-version=7.1",
+        org_url, proj_enc, repo_id, pr_id
     );
+    if debug_enabled {
+        println!("(DEBUG) create_review_thread => {}", url);
+    }
 
     let thread = Thread {
         comments: vec![ThreadComment {
             content: comment.to_string(),
             comment_type: 1,
         }],
-        status: 1,
+        status: 1, // active
         thread_context: ThreadContext {
             file_path: file_path.to_string(),
         },
     };
 
-    client
+    let resp = client
         .post(&url)
         .header("Authorization", format!("Basic {}", BASE64.encode(format!(":{}", pat))))
         .json(&thread)
         .send()
-        .await?
-        .error_for_status()?;
+        .await?;
+
+    if !resp.status().is_success() {
+        let st = resp.status();
+        let body = resp.text().await?;
+        if debug_enabled {
+            eprintln!("(DEBUG) create_review_thread => error: {} => {}", st, body);
+        }
+        return Err(format!("Create thread API error: status={}, body={}", st, body).into());
+    }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_create_system_message() {
-        let message = create_system_message();
-        assert_eq!(message.role, "system");
-        assert!(!message.content.is_empty());
-    }
-
-    #[test]
-    fn test_build_search_url() {
-        let config = SearchConfig {
-            endpoint: "https://example.com".to_string(),
-            key: "key".to_string(),
-            index: "index".to_string(),
-        };
-        let url = build_search_url(&config, "test");
-        assert!(url.contains("https://example.com"));
-        assert!(url.contains("index"));
-        assert!(url.contains("test"));
-    }
 }

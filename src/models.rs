@@ -1,49 +1,54 @@
+// models.rs
+
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-// Constants
+/// Default min severity
 pub const DEFAULT_MIN_SEVERITY: u8 = 3;
 
+/// Default categories
 pub const DEFAULT_CATEGORIES: [&str; 5] = [
     "Parameters",
     "Variables",
     "Naming",
     "Resources",
-    "Outputs"
+    "Outputs",
 ];
 
-/// Command line arguments for the application
+/// Local usage
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 pub struct Args {
-    /// Path to the Bicep file for analysis
+    /// Path to local Bicep file
     #[arg(long)]
     pub bicep_file: String,
 
-    /// Path to markdown file containing best practices
+    /// Path to best practices MD
     #[arg(long)]
     pub best_practices_file: String,
 
-    /// Optional specific category to analyze
-    /// If not provided, all categories will be analyzed
+    /// Single optional category
     #[arg(long)]
     pub category: Option<String>,
 
-    /// Enable debug output for LLM requests/responses
+    /// Debug
     #[arg(long)]
     pub debug: bool,
 
-    /// Minimum severity level (1-5) to include in results
-    /// 5: Critical, 4: Serious, 3: Important, 2: Minor, 1: Suggestion
+    /// Minimum severity
     #[arg(long, default_value_t = DEFAULT_MIN_SEVERITY)]
     pub minimum_severity: u8,
+
+    /// Simple mode - single prompt without categories
+    #[arg(long)]
+    pub simple: bool,
 }
 
-/// Azure DevOps specific command line arguments
+/// Azure DevOps usage
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 pub struct AzureDevOpsArgs {
-    /// Azure DevOps organization URL
+    /// Org name or snippet
     #[arg(long)]
     pub organization: String,
 
@@ -55,95 +60,80 @@ pub struct AzureDevOpsArgs {
     #[arg(long)]
     pub pull_request_id: i32,
 
-    /// Azure DevOps Personal Access Token
+    /// PAT with code read/write
     #[arg(long)]
     pub pat: String,
 
-    /// Path to markdown file containing best practices
+    /// Best practices MD
     #[arg(long)]
     pub best_practices_file: String,
 
-    /// Enable debug output for LLM requests/responses
+    /// Debug
     #[arg(long)]
     pub debug: bool,
 
-    /// Minimum severity level (1-5) to include in results
+    /// Minimum severity
     #[arg(long, default_value_t = DEFAULT_MIN_SEVERITY)]
     pub minimum_severity: u8,
+
+    /// Human-friendly repo name
+    #[arg(long)]
+    pub repository: String,
+
+    /// Simple mode - single prompt without categories
+    #[arg(long)]
+    pub simple: bool,
 }
 
-/// Represents a single validation finding from the code review
+/// Validation result
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ValidationResult {
-    /// Category of the finding (e.g., "Parameters", "Variables")
     pub category: String,
-    
-    /// Description of the issue found
     pub finding: String,
-    
-    /// Severity level (1-5) of the finding
     #[serde(deserialize_with = "deserialize_severity")]
     pub severity: u8,
-    
-    /// Description of the potential impact of this issue
     pub impact: String,
 }
 
-/// Collection of best practices
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BestPracticesResponse {
-    pub practices: Vec<String>,
-}
-
-/// Collection of validation findings
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ValidationResponse {
-    pub findings: Vec<ValidationResult>,
-}
-
-/// Final report containing all findings
+/// Final aggregated JSON
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FinalReport {
     pub findings: Vec<ValidationResult>,
 }
 
-/// Custom deserializer for severity values
-/// Handles both numeric and string inputs
+/// Custom deserializer for severity
 pub fn deserialize_severity<'de, D>(deserializer: D) -> Result<u8, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
-    enum SeverityValue {
-        Number(u8),
-        String(()),
+    enum MaybeNum {
+        Num(u8),
+        #[allow(dead_code)]  // Allow dead code for serde deserialization
+        Str(String),
     }
 
-    match SeverityValue::deserialize(deserializer)? {
-        SeverityValue::Number(n) => Ok(n),
-        SeverityValue::String(_) => Ok(0),
+    match MaybeNum::deserialize(deserializer)? {
+        MaybeNum::Num(n) => Ok(n),
+        MaybeNum::Str(_) => Ok(0),
     }
 }
 
+/// Changed file in PR
 #[derive(Debug, Deserialize)]
 pub struct PullRequestFile {
     pub path: String,
+    #[serde(rename = "changeType")]
     pub change_type: String,
+    #[serde(rename = "objectId")]
+    pub object_id: String,
+    #[serde(rename = "originalObjectId")]
+    #[allow(dead_code)]  // Allow dead code as it's part of the API response
+    pub original_object_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct FileDiff {
-    pub path: String,
-    pub content: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ThreadComment {
-    pub content: String,
-    pub comment_type: i32,
-}
-
+/// Thread creation
 #[derive(Debug, Serialize)]
 pub struct Thread {
     pub comments: Vec<ThreadComment>,
@@ -151,6 +141,14 @@ pub struct Thread {
     pub thread_context: ThreadContext,
 }
 
+/// Single comment
+#[derive(Debug, Serialize)]
+pub struct ThreadComment {
+    pub content: String,
+    pub comment_type: i32,
+}
+
+/// Thread context (file path etc.)
 #[derive(Debug, Serialize)]
 pub struct ThreadContext {
     pub file_path: String,
