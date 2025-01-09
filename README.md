@@ -221,7 +221,7 @@ steps:
 ```
 
 3. Pipeline Setup Requirements:
-   - Create a PAT (Personal Access Token) with Code (Read & Write) permissions
+   - Create a PAT (Personal Access Token) with PR and Code (Read & Write) permissions
    - Add it as a pipeline variable named `ADO_PAT` (mark as secret)
    - Build and add a bicep-validator as a Secure File
    - Add your bicep rule set as a Secure File
